@@ -11,6 +11,8 @@ Building
 Usage
 -----
 
+```sh
     wikipath "Dennis Ritchie" "Go (programming language)"
+```
 
     Dennis Ritchie -> B (programming language) -> Go (programming language)
