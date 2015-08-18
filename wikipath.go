@@ -122,6 +122,9 @@ func Walk(s string, t string) (Path, error) {
 		}
 		log.Println(NewPath(top))
 		for _, l := range links {
+			if _, ok := visited[l.Title]; ok || strings.ContainsAny(l.Title, ":") {
+				continue
+			}
 			p := &Page{
 				Title:  l.Title,
 				Parent: top,
@@ -129,10 +132,8 @@ func Walk(s string, t string) (Path, error) {
 			if p.Title == t {
 				return NewPath(p), nil
 			}
-			if _, ok := visited[p.Title]; !ok {
-				queue = append(queue, p)
-				visited[p.Title] = true
-			}
+			queue = append(queue, p)
+			visited[p.Title] = true
 		}
 	}
 	return nil, errors.New("no path between")
