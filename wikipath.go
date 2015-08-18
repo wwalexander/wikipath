@@ -18,6 +18,7 @@ type APILink struct {
 
 type APIPage struct {
 	Title   string     `json:"title"`
+	NS      int        `json:"ns"`
 	Missing *string    `json:"missing"`
 	Links   []*APILink `json:"links"`
 }
@@ -79,6 +80,8 @@ func Links(title string) ([]*APILink, error) {
 		ap, ok := ar.APIPage()
 		if !ok {
 			return nil, errors.New("page does not exist")
+		} else if ap.NS != 0 {
+			return nil, errors.New("page is namespaced")
 		}
 		links = append(links, ap.Links...)
 		if ar.Continue == nil {
@@ -110,42 +113,43 @@ func (p Path) String() string {
 	return strings.Join(p, " -> ")
 }
 
-func Walk(s string, t string) (Path, error) {
+func Walk(s string, t string) (Path, bool) {
 	visited := make(map[string]bool)
 	queue := []*Page{&Page{Title: s}}
 	for len(queue) > 0 {
 		top := queue[0]
 		queue = queue[1:]
+		path := NewPath(top)
+		if top.Title == t {
+			return path, true
+		}
+		log.Println(path)
 		links, err := Links(top.Title)
 		if err != nil {
 			continue
 		}
-		log.Println(NewPath(top))
 		for _, l := range links {
-			if _, ok := visited[l.Title]; ok || strings.ContainsAny(l.Title, ":") {
+			if _, ok := visited[l.Title]; ok {
 				continue
 			}
 			p := &Page{
 				Title:  l.Title,
 				Parent: top,
 			}
-			if p.Title == t {
-				return NewPath(p), nil
-			}
 			queue = append(queue, p)
 			visited[p.Title] = true
 		}
 	}
-	return nil, errors.New("no path between")
+	return nil, false
 }
 
 func main() {
 	if len(os.Args) < 3 {
 		log.Fatal("start and end article must be specified")
 	}
-	path, err := Walk(os.Args[1], os.Args[2])
-	if err != nil {
-		log.Fatal(err)
+	path, ok := Walk(os.Args[1], os.Args[2])
+	if !ok {
+		log.Fatal("no path exists")
 	}
 	fmt.Println(path)
 }
