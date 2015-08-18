@@ -6,7 +6,9 @@ A tool which finds a shortest path between two Wikipedia articles
 Building
 --------
 
-`go build`
+```
+go build
+```
 
 Usage
 -----
