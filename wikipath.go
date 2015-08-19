@@ -25,7 +25,7 @@ type APIPage struct {
 }
 
 type APIQuery struct {
-	Pages map[string]APIPage `json:"pages"`
+	Pages map[string]*APIPage `json:"pages"`
 }
 
 type APIContinue struct {
@@ -38,25 +38,26 @@ type APIResp struct {
 	Continue *APIContinue `json:"continue"`
 }
 
-func Get(url url.URL) (APIResp, error) {
+func Get(url url.URL) (*APIResp, error) {
 	resp, err := http.Get(url.String())
 	if err != nil {
-		return APIResp{}, err
+		return nil, err
 	}
-	var ar APIResp
-	if err = json.NewDecoder(resp.Body).Decode(&ar); err != nil {
-		return APIResp{}, err
+	defer resp.Body.Close()
+	ar := &APIResp{}
+	if err = json.NewDecoder(resp.Body).Decode(ar); err != nil {
+		return nil, err
 	}
 	return ar, nil
 }
 
-func (ar APIResp) APIPage() (APIPage, bool) {
+func (ar APIResp) APIPage() (*APIPage, bool) {
 	for _, p := range ar.Query.Pages {
 		if p.Missing == nil {
 			return p, true
 		}
 	}
-	return APIPage{}, false
+	return nil, false
 }
 
 func Links(title string) ([]*APILink, error) {
@@ -124,11 +125,12 @@ func Walk(s string, t string) (Path, bool) {
 		if top.Title == t {
 			return path, true
 		}
-		log.Println(path)
 		links, err := Links(top.Title)
 		if err != nil {
+			log.Printf("skipping %s (%s)", top.Title, err)
 			continue
 		}
+		log.Println(path)
 		for _, l := range links {
 			if _, ok := visited[l.Title]; ok {
 				continue
