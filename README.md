@@ -11,8 +11,6 @@ Building
 Usage
 -----
 
-```sh
-wikipath "Dennis Ritchie" "Go (programming language)"
-```
+Find a path between the `START` and `END` articles:
 
-    Dennis Ritchie -> B (programming language) -> Go (programming language)
+    wikipath [START] [END]
