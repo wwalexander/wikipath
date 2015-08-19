@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -144,10 +145,13 @@ func Walk(s string, t string) (Path, bool) {
 }
 
 func main() {
-	if len(os.Args) < 3 {
-		log.Fatal("start and end article must be specified")
+	flag.Parse()
+	args := flag.Args()
+	if len(args) != 2 {
+		flag.Usage()
+		os.Exit(1)
 	}
-	path, ok := Walk(os.Args[1], os.Args[2])
+	path, ok := Walk(args[0], args[1])
 	if !ok {
 		log.Fatal("no path exists")
 	}
