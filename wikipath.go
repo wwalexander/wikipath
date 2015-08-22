@@ -116,14 +116,13 @@ func Walk(s string, t string) (Path, bool) {
 	for len(queue) > 0 {
 		top := queue[0]
 		queue = queue[1:]
-		path := NewPath(top)
 		if top.Title == t {
-			return path, true
+			return NewPath(top), true
 		}
 		if top.Missing != nil || top.NS != 0 {
 			continue
 		}
-		log.Println(path)
+		log.Println(top.Title)
 		pages := make(chan *APIPage, len(top.Links))
 		for _, l := range top.Links {
 			go func(title string) {
