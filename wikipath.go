@@ -76,15 +76,10 @@ func GetAPIPage(title string) (*APIPage, error) {
 		}
 		var apPart *APIPage
 		for _, p := range ar.Query.Pages {
-			if p.Missing == nil {
-				apPart = p
-			}
+			apPart = p
 		}
 		if apPart == nil {
 			return nil, errors.New("page does not exist")
-		}
-		if apPart.NS != 0 {
-			return nil, errors.New("page is namespaced")
 		}
 		ap.Links = append(ap.Links, apPart.Links...)
 		if ar.Continue == nil {
@@ -124,6 +119,9 @@ func Walk(s string, t string) (Path, bool) {
 		path := NewPath(top)
 		if top.Title == t {
 			return path, true
+		}
+		if top.Missing != nil || top.NS != 0 {
+			continue
 		}
 		log.Println(path)
 		pages := make(chan *APIPage, len(top.Links))
