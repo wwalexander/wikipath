@@ -22,6 +22,7 @@ type APIPage struct {
 	NS      int        `json:"ns"`
 	Missing *string    `json:"missing"`
 	Links   []*APILink `json:"links"`
+	Parent  *APIPage   `json:"-"`
 }
 
 type APIQuery struct {
@@ -51,16 +52,7 @@ func Get(url url.URL) (*APIResp, error) {
 	return ar, nil
 }
 
-func (ar APIResp) APIPage() (*APIPage, bool) {
-	for _, p := range ar.Query.Pages {
-		if p.Missing == nil {
-			return p, true
-		}
-	}
-	return nil, false
-}
-
-func Links(title string) ([]*APILink, error) {
+func GetAPIPage(title string) (*APIPage, error) {
 	url := url.URL{
 		Scheme: "https",
 		Host:   "en.wikipedia.org",
@@ -73,19 +65,28 @@ func Links(title string) ([]*APILink, error) {
 	q.Set("prop", "links")
 	q.Set("titles", title)
 	url.RawQuery = q.Encode()
-	links := []*APILink{}
+	ap := &APIPage{
+		Title: title,
+		Links: []*APILink{},
+	}
 	for {
 		ar, err := Get(url)
 		if err != nil {
 			return nil, err
 		}
-		ap, ok := ar.APIPage()
-		if !ok {
+		var apPart *APIPage
+		for _, p := range ar.Query.Pages {
+			if p.Missing == nil {
+				apPart = p
+			}
+		}
+		if apPart == nil {
 			return nil, errors.New("page does not exist")
-		} else if ap.NS != 0 {
+		}
+		if apPart.NS != 0 {
 			return nil, errors.New("page is namespaced")
 		}
-		links = append(links, ap.Links...)
+		ap.Links = append(ap.Links, apPart.Links...)
 		if ar.Continue == nil {
 			break
 		}
@@ -93,17 +94,12 @@ func Links(title string) ([]*APILink, error) {
 		q.Set("plcontinue", ar.Continue.PLContinue)
 		url.RawQuery = q.Encode()
 	}
-	return links, nil
-}
-
-type Page struct {
-	Title  string
-	Parent *Page
+	return ap, nil
 }
 
 type Path []string
 
-func NewPath(t *Page) Path {
+func NewPath(t *APIPage) Path {
 	path := Path{}
 	for p := t; p != nil; p = p.Parent {
 		path = append(Path{p.Title}, path...)
@@ -117,7 +113,11 @@ func (p Path) String() string {
 
 func Walk(s string, t string) (Path, bool) {
 	visited := make(map[string]bool)
-	queue := []*Page{&Page{Title: s}}
+	sPage, err := GetAPIPage(s)
+	if err != nil {
+		return nil, false
+	}
+	queue := []*APIPage{sPage}
 	for len(queue) > 0 {
 		top := queue[0]
 		queue = queue[1:]
@@ -125,22 +125,29 @@ func Walk(s string, t string) (Path, bool) {
 		if top.Title == t {
 			return path, true
 		}
-		links, err := Links(top.Title)
-		if err != nil {
-			log.Printf("skipping %s (%s)", top.Title, err)
-			continue
-		}
 		log.Println(path)
-		for _, l := range links {
-			if _, ok := visited[l.Title]; ok {
+		pages := make(chan *APIPage, len(top.Links))
+		for _, l := range top.Links {
+			go func(title string) {
+				if _, ok := visited[l.Title]; ok {
+					return
+				}
+				ap, err := GetAPIPage(title)
+				if err == nil {
+					ap.Parent = top
+					pages <- ap
+				} else {
+					pages <- nil
+				}
+			}(l.Title)
+		}
+		for _ = range top.Links {
+			ap := <-pages
+			if ap == nil {
 				continue
 			}
-			p := &Page{
-				Title:  l.Title,
-				Parent: top,
-			}
-			queue = append(queue, p)
-			visited[p.Title] = true
+			visited[ap.Title] = true
+			queue = append(queue, ap)
 		}
 	}
 	return nil, false
@@ -153,9 +160,11 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
-	path, ok := Walk(args[0], args[1])
+	s := args[0]
+	t := args[1]
+	path, ok := Walk(s, t)
 	if !ok {
-		log.Fatal("no path exists")
+		log.Fatalf("no path exists between %s and %s", s, t)
 	}
 	fmt.Println(path)
 }
