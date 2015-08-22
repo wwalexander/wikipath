@@ -13,10 +13,12 @@ import (
 	"strings"
 )
 
+// APILink represents an link in an API response.
 type APILink struct {
 	Title string `json:"title"`
 }
 
+// APIPage represents a page in an API response.
 type APIPage struct {
 	Title   string     `json:"title"`
 	NS      int        `json:"ns"`
@@ -25,21 +27,49 @@ type APIPage struct {
 	Parent  *APIPage   `json:"-"`
 }
 
+// APIQuery represents a query response in an API response.
 type APIQuery struct {
 	Pages map[string]*APIPage `json:"pages"`
 }
 
+// APIContinue represents a pagination continue value in an API response.
 type APIContinue struct {
 	PLContinue string `json:"plcontinue"`
 	Continue   string `json:"continue"`
 }
 
+// APIResp represents an API response.
 type APIResp struct {
 	Query    APIQuery     `json:"query"`
 	Continue *APIContinue `json:"continue"`
 }
 
-func Get(url url.URL) (*APIResp, error) {
+var baseURL url.URL
+var baseQ url.Values
+
+func init() {
+	baseURL = url.URL{
+		Scheme: "https",
+		Host:   "en.wikipedia.org",
+		Path:   path.Join("w", "api.php"),
+	}
+	baseQ = baseURL.Query()
+	baseQ.Set("action", "query")
+	baseQ.Set("format", "json")
+	baseQ.Set("prop", "links")
+}
+
+// GetAPIResp gets an APIResp for the given title. If prev.Continue is not nil,
+// its values are used to continue pagination.
+func GetAPIResp(title string, prev *APIResp) (*APIResp, error) {
+	q := baseQ
+	if prev.Continue != nil {
+		q.Set("continue", prev.Continue.Continue)
+		q.Set("plcontinue", prev.Continue.PLContinue)
+	}
+	q.Set("titles", title)
+	url := baseURL
+	url.RawQuery = q.Encode()
 	resp, err := http.Get(url.String())
 	if err != nil {
 		return nil, err
@@ -52,25 +82,15 @@ func Get(url url.URL) (*APIResp, error) {
 	return ar, nil
 }
 
+// GetAPIPage gets an APIPage for the given title.
 func GetAPIPage(title string) (*APIPage, error) {
-	url := url.URL{
-		Scheme: "https",
-		Host:   "en.wikipedia.org",
-		Path:   path.Join("w", "api.php"),
-	}
-	q := url.Query()
-	q.Set("action", "query")
-	q.Set("continue", "")
-	q.Set("format", "json")
-	q.Set("prop", "links")
-	q.Set("titles", title)
-	url.RawQuery = q.Encode()
 	ap := &APIPage{
 		Title: title,
 		Links: []*APILink{},
 	}
+	prev := &APIResp{}
 	for {
-		ar, err := Get(url)
+		ar, err := GetAPIResp(title, prev)
 		if err != nil {
 			return nil, err
 		}
@@ -82,18 +102,18 @@ func GetAPIPage(title string) (*APIPage, error) {
 			return nil, errors.New("page does not exist")
 		}
 		ap.Links = append(ap.Links, apPart.Links...)
+		prev = ar
 		if ar.Continue == nil {
 			break
 		}
-		q.Set("continue", ar.Continue.Continue)
-		q.Set("plcontinue", ar.Continue.PLContinue)
-		url.RawQuery = q.Encode()
 	}
 	return ap, nil
 }
 
+// Path is the list of page titles between two pages (inclusive).
 type Path []string
 
+// NewPath creates a new Path by tracing t's Parents.
 func NewPath(t *APIPage) Path {
 	path := Path{}
 	for p := t; p != nil; p = p.Parent {
@@ -102,31 +122,39 @@ func NewPath(t *APIPage) Path {
 	return path
 }
 
+// String returns the titles in path delimited with an arrow.
 func (p Path) String() string {
 	return strings.Join(p, " -> ")
 }
 
-func Walk(s string, t string) (Path, bool) {
+// Valid returns whether ap exists and is non-namespaced
+func (ap APIPage) Valid() bool {
+	return ap.Missing == nil && ap.NS == 0
+}
+
+// Walk returns the shortest path between the pages with titles s and t. If no
+// path exists, ok is false.
+func Walk(s string, t string) (p Path, ok bool) {
 	visited := make(map[string]bool)
 	sPage, err := GetAPIPage(s)
-	if err != nil {
+	if err != nil || !sPage.Valid() {
 		return nil, false
+	}
+	if s == t {
+		return NewPath(&APIPage{Title: s}), true
 	}
 	queue := []*APIPage{sPage}
 	for len(queue) > 0 {
 		top := queue[0]
 		queue = queue[1:]
-		if top.Title == t {
-			return NewPath(top), true
-		}
-		if top.Missing != nil || top.NS != 0 {
+		if !top.Valid() {
 			continue
 		}
 		log.Println(top.Title)
 		pages := make(chan *APIPage, len(top.Links))
 		for _, l := range top.Links {
 			go func(title string) {
-				if _, ok := visited[l.Title]; ok {
+				if _, ok := visited[title]; ok {
 					pages <- nil
 					return
 				}
@@ -139,10 +167,13 @@ func Walk(s string, t string) (Path, bool) {
 				pages <- ap
 			}(l.Title)
 		}
-		for _ = range top.Links {
+		for range top.Links {
 			ap := <-pages
 			if ap == nil {
 				continue
+			}
+			if ap.Title == t {
+				return NewPath(ap), true
 			}
 			visited[ap.Title] = true
 			queue = append(queue, ap)
