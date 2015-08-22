@@ -130,15 +130,16 @@ func Walk(s string, t string) (Path, bool) {
 		for _, l := range top.Links {
 			go func(title string) {
 				if _, ok := visited[l.Title]; ok {
+					pages <- nil
 					return
 				}
 				ap, err := GetAPIPage(title)
-				if err == nil {
-					ap.Parent = top
-					pages <- ap
-				} else {
+				if err != nil {
 					pages <- nil
+					return
 				}
+				ap.Parent = top
+				pages <- ap
 			}(l.Title)
 		}
 		for _ = range top.Links {
