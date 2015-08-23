@@ -165,9 +165,6 @@ func Walk(s string, t string) (p Path, err error) {
 					pages <- nil
 					return
 				}
-				if len(p.Links) == 0 {
-					log.Println(p.Title, "has no links")
-				}
 				pages <- p
 			}(l)
 		}
@@ -182,7 +179,6 @@ func Walk(s string, t string) (p Path, err error) {
 			visited[p.Title] = true
 			queue = append(queue, p)
 		}
-		log.Println(len(queue))
 	}
 	return nil, errors.New("no path exists")
 }
