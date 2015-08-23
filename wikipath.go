@@ -168,6 +168,7 @@ func Walk(s string, t string) (p Path, err error) {
 				pages <- p
 			}(l)
 		}
+		pagesOut := make([]*Page, 0, len(top.Links))
 		for range top.Links {
 			p := <-pages
 			if p == nil {
@@ -176,6 +177,10 @@ func Walk(s string, t string) (p Path, err error) {
 			if p.Title == t {
 				return NewPath(p), nil
 			}
+			pagesOut = append(pagesOut, p)
+		}
+		close(pages)
+		for _, p := range pagesOut {
 			visited[p.Title] = true
 			queue = append(queue, p)
 		}
