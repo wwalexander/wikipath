@@ -13,23 +13,6 @@ import (
 	"strings"
 )
 
-var baseURL url.URL
-var baseQ url.Values
-var baseQLinks url.Values
-
-func init() {
-	baseURL = url.URL{
-		Scheme: "https",
-		Host:   "en.wikipedia.org",
-		Path:   path.Join("w", "api.php"),
-	}
-	baseQ = baseURL.Query()
-	baseQ.Set("action", "query")
-	baseQ.Set("format", "json")
-	baseQLinks = baseQ
-	baseQLinks.Set("prop", "links")
-}
-
 // Page represents a Wikipedia page.
 type Page struct {
 	Title  string
@@ -65,14 +48,26 @@ func (ar apiResp) apiPage() (*apiPage, error) {
 			return p, nil
 		}
 	}
-	return nil, errors.New("page does not exist")
+	return nil, errors.New("non-namespaced page does not exist")
+}
+
+// BaseURL returns the base API URL and query for the given title.
+func BaseURL(title string) (*url.URL, url.Values) {
+	url := url.URL{
+		Scheme: "https",
+		Host:   "en.wikipedia.org",
+		Path:   path.Join("w", "api.php"),
+	}
+	q := url.Query()
+	q.Set("action", "query")
+	q.Set("format", "json")
+	q.Set("titles", title)
+	return &url, q
 }
 
 // GetPage gets a Page with the given title, without Links.
 func GetPage(title string) (*Page, error) {
-	q := baseQ
-	q.Set("titles", title)
-	url := baseURL
+	url, q := BaseURL(title)
 	url.RawQuery = q.Encode()
 	resp, err := http.Get(url.String())
 	if err != nil {
@@ -92,39 +87,31 @@ func GetPage(title string) (*Page, error) {
 
 // PopulateLinks populates p.Links.
 func (p *Page) PopulateLinks() error {
-	q := baseQLinks
-	q.Set("titles", p.Title)
-	url := baseURL
+	url, q := BaseURL(p.Title)
+	q.Set("prop", "links")
 	url.RawQuery = q.Encode()
-	resp, err := http.Get(url.String())
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	ar := apiResp{}
-	if err = json.NewDecoder(resp.Body).Decode(&ar); err != nil {
-		return err
-	}
-	for ar.Continue != nil {
-		ap, err := ar.apiPage()
-		if err != nil {
-			return err
-		}
-		p.Links = append(p.Links, ap.Links...)
-		q.Set("continue", ar.Continue.Continue)
-		q.Set("plcontinue", ar.Continue.PLContinue)
+	for {
 		url.RawQuery = q.Encode()
 		resp, err := http.Get(url.String())
 		if err != nil {
 			return err
 		}
 		defer resp.Body.Close()
-		ar = apiResp{}
+		var ar apiResp
 		if err = json.NewDecoder(resp.Body).Decode(&ar); err != nil {
 			return err
 		}
+		ap, err := ar.apiPage()
+		if err != nil {
+			return err
+		}
+		p.Links = append(p.Links, ap.Links...)
+		if ar.Continue == nil {
+			return nil
+		}
+		q.Set("continue", ar.Continue.Continue)
+		q.Set("plcontinue", ar.Continue.PLContinue)
 	}
-	return nil
 }
 
 // Path is the list of page titles between two pages (inclusive).
@@ -170,11 +157,16 @@ func Walk(s string, t string) (p Path, err error) {
 					return
 				}
 				p.Parent = top
-				if p.Title != t {
-					if err = p.PopulateLinks(); err != nil {
-						pages <- nil
-						return
-					}
+				if p.Title == t {
+					pages <- p
+					return
+				}
+				if err = p.PopulateLinks(); err != nil {
+					pages <- nil
+					return
+				}
+				if len(p.Links) == 0 {
+					log.Println(p.Title, "has no links")
 				}
 				pages <- p
 			}(l)
@@ -190,6 +182,7 @@ func Walk(s string, t string) (p Path, err error) {
 			visited[p.Title] = true
 			queue = append(queue, p)
 		}
+		log.Println(len(queue))
 	}
 	return nil, errors.New("no path exists")
 }
