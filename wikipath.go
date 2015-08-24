@@ -192,7 +192,8 @@ func main() {
 	flag.Parse()
 	args := flag.Args()
 	if len(args) != 2 {
-		flag.Usage()
+		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "%s [START] [END]\n", os.Args[0])
 		os.Exit(1)
 	}
 	s := args[0]
