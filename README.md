@@ -1,7 +1,7 @@
 wikipath
 ========
 
-A tool that finds a shortest path between two Wikipedia articles
+Finds a shortest path between two Wikipedia articles
 
 Building
 --------
