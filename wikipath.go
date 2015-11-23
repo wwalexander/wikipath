@@ -28,7 +28,7 @@ type apiPage struct {
 }
 
 type apiQuery struct {
-	pages map[string]*apiPage `json:"pages"`
+	Pages map[string]*apiPage `json:"pages"`
 }
 
 type apiContinue struct {
@@ -110,6 +110,7 @@ func (p *page) populateLinks() error {
 	}
 }
 
+// Path is the list of page titles between two pages (inclusive).
 type Path []string
 
 func newPath(t *page) Path {
