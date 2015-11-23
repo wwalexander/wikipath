@@ -42,7 +42,7 @@ type apiResp struct {
 }
 
 func (ar apiResp) apiPage() (*apiPage, error) {
-	for _, p := range ar.Query.pages {
+	for _, p := range ar.Query.Pages {
 		if p.Missing == nil && p.NS == 0 {
 			return p, nil
 		}
@@ -185,14 +185,17 @@ func Walk(s string, t string) (p Path, err error) {
 
 const usage = `usage: wikipath [title] [title]
 
-wikipath finds the shortest path from the Wikipedia article specified by the
-first title to the Wikipedia article specified by the second title.`
+wikipath finds the shortest path from the Wikipedia article named by the
+first title to the Wikipedia article named by the second title.`
 
 func main() {
+	flag.Usage = func() {
+		fmt.Fprintln(os.Stderr, usage)
+	}
 	flag.Parse()
 	args := flag.Args()
 	if len(args) != 2 {
-		fmt.Fprintln(os.Stderr, usage)
+		flag.Usage()
 		os.Exit(1)
 	}
 	s := args[0]
