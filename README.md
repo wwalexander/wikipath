@@ -11,6 +11,7 @@ Building
 Usage
 -----
 
-Find a path between the `START` and `END` articles:
+    wikipath [title] [title]
 
-    wikipath [START] [END]
+wikipath finds the shortest path from the Wikipedia article specified by the
+first title to the Wikipedia article specified by the second title.

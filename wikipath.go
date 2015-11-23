@@ -13,23 +13,22 @@ import (
 	"strings"
 )
 
-// Page represents a Wikipedia page.
-type Page struct {
-	Title  string
-	Parent *Page
-	Links  []*Page
+type page struct {
+	title  string
+	parent *page
+	links  []*page
 }
 
 type apiPage struct {
 	Title   string  `json:"title"`
 	NS      int     `json:"ns"`
 	Missing *string `json:"missing"`
-	Links   []*Page `json:"links"`
-	Parent  *Page   `json:"-"`
+	Links   []*page `json:"links"`
+	Parent  *page   `json:"-"`
 }
 
 type apiQuery struct {
-	Pages map[string]*apiPage `json:"pages"`
+	pages map[string]*apiPage `json:"pages"`
 }
 
 type apiContinue struct {
@@ -43,7 +42,7 @@ type apiResp struct {
 }
 
 func (ar apiResp) apiPage() (*apiPage, error) {
-	for _, p := range ar.Query.Pages {
+	for _, p := range ar.Query.pages {
 		if p.Missing == nil && p.NS == 0 {
 			return p, nil
 		}
@@ -51,8 +50,7 @@ func (ar apiResp) apiPage() (*apiPage, error) {
 	return nil, errors.New("non-namespaced page does not exist")
 }
 
-// BaseURL returns the base API URL and query for the given title.
-func BaseURL(title string) (*url.URL, url.Values) {
+func baseURL(title string) (*url.URL, url.Values) {
 	url := url.URL{
 		Scheme: "https",
 		Host:   "en.wikipedia.org",
@@ -65,9 +63,8 @@ func BaseURL(title string) (*url.URL, url.Values) {
 	return &url, q
 }
 
-// GetPage gets a Page with the given title, without Links.
-func GetPage(title string) (*Page, error) {
-	url, q := BaseURL(title)
+func newPage(title string) (*page, error) {
+	url, q := baseURL(title)
 	url.RawQuery = q.Encode()
 	resp, err := http.Get(url.String())
 	if err != nil {
@@ -82,12 +79,11 @@ func GetPage(title string) (*Page, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Page{Title: ap.Title}, nil
+	return &page{title: ap.Title}, nil
 }
 
-// PopulateLinks populates p.Links.
-func (p *Page) PopulateLinks() error {
-	url, q := BaseURL(p.Title)
+func (p *page) populateLinks() error {
+	url, q := baseURL(p.title)
 	q.Set("prop", "links")
 	url.RawQuery = q.Encode()
 	for {
@@ -105,7 +101,7 @@ func (p *Page) PopulateLinks() error {
 		if err != nil {
 			return err
 		}
-		p.Links = append(p.Links, ap.Links...)
+		p.links = append(p.links, ap.Links...)
 		if ar.Continue == nil {
 			return nil
 		}
@@ -114,14 +110,12 @@ func (p *Page) PopulateLinks() error {
 	}
 }
 
-// Path is the list of page titles between two pages (inclusive).
 type Path []string
 
-// NewPath creates a new Path by tracing t's Parents.
-func NewPath(t *Page) Path {
+func newPath(t *page) Path {
 	path := Path{}
-	for p := t; p != nil; p = p.Parent {
-		path = append(Path{p.Title}, path...)
+	for p := t; p != nil; p = p.parent {
+		path = append(Path{p.title}, path...)
 	}
 	return path
 }
@@ -134,66 +128,70 @@ func (p Path) String() string {
 // Walk returns the shortest path between the pages with titles s and t.
 func Walk(s string, t string) (p Path, err error) {
 	visited := make(map[string]bool)
-	sp, err := GetPage(s)
+	sp, err := newPage(s)
 	if err != nil {
 		return nil, err
 	}
 	if s == t {
-		return NewPath(sp), nil
+		return newPath(sp), nil
 	}
-	if err = sp.PopulateLinks(); err != nil {
+	if err = sp.populateLinks(); err != nil {
 		return nil, err
 	}
-	queue := []*Page{sp}
+	queue := []*page{sp}
 	for len(queue) > 0 {
 		top := queue[0]
 		queue = queue[1:]
-		log.Println(top.Title)
-		pages := make(chan *Page, len(top.Links))
-		for _, l := range top.Links {
-			go func(p *Page) {
-				if _, ok := visited[p.Title]; ok {
+		log.Println(top.title)
+		pages := make(chan *page, len(top.links))
+		for _, l := range top.links {
+			go func(p *page) {
+				if _, ok := visited[p.title]; ok {
 					pages <- nil
 					return
 				}
-				p.Parent = top
-				if p.Title == t {
+				p.parent = top
+				if p.title == t {
 					pages <- p
 					return
 				}
-				if err = p.PopulateLinks(); err != nil {
+				if err = p.populateLinks(); err != nil {
 					pages <- nil
 					return
 				}
 				pages <- p
 			}(l)
 		}
-		pagesOut := make([]*Page, 0, len(top.Links))
-		for range top.Links {
+		pagesOut := make([]*page, 0, len(top.links))
+		for range top.links {
 			p := <-pages
 			if p == nil {
 				continue
 			}
-			if p.Title == t {
-				return NewPath(p), nil
+			if p.title == t {
+				return newPath(p), nil
 			}
 			pagesOut = append(pagesOut, p)
 		}
 		close(pages)
 		for _, p := range pagesOut {
-			visited[p.Title] = true
+			visited[p.title] = true
 			queue = append(queue, p)
 		}
 	}
 	return nil, errors.New("no path exists")
 }
 
+const usage = `usage: wikipath [title] [title]
+
+wikipath finds the shortest path from the Wikipedia article specified by the
+first title to the Wikipedia article specified by the second title.`
+
 func main() {
 	flag.Parse()
 	args := flag.Args()
 	if len(args) != 2 {
-		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "%s [START] [END]\n", os.Args[0])
+		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(1)
 	}
 	s := args[0]
