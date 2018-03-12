@@ -11,7 +11,7 @@ Building
 Usage
 -----
 
-    wikipath [title] [title]
+    wikipath title title
 
-wikipath finds the shortest path from the Wikipedia article specified by the
-first title to the Wikipedia article specified by the second title.
+wikipath finds a shortest path from the Wikipedia article named by the
+first title to the Wikipedia article named by the second title.

@@ -126,7 +126,7 @@ func (p Path) String() string {
 	return strings.Join(p, " -> ")
 }
 
-// Walk returns the shortest path between the pages with titles s and t.
+// Walk returns a shortest path between the pages with titles s and t.
 func Walk(s string, t string) (p Path, err error) {
 	visited := make(map[string]bool)
 	sp, err := newPage(s)
@@ -183,9 +183,9 @@ func Walk(s string, t string) (p Path, err error) {
 	return nil, errors.New("no path exists")
 }
 
-const usage = `usage: wikipath [title] [title]
+const usage = `usage: wikipath title title
 
-wikipath finds the shortest path from the Wikipedia article named by the
+wikipath finds a shortest path from the Wikipedia article named by the
 first title to the Wikipedia article named by the second title.`
 
 func main() {
